@@ -1,8 +1,8 @@
+nanotubo: nanotubo.f90
+	gfortran -O3 nanotubo.f90 -o nanotubo
+
 run: nanotubo
 	./nanotubo
-
-nanotubo:
-	gfortran -O3 nanotubo.f90 -o nanotubo
 
 data: nanotubo
 	./nanotubo > data
