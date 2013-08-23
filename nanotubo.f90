@@ -1,74 +1,117 @@
 program nanotubo
 
-    use utils
-
     implicit none
 
-    double precision, allocatable, dimension(:,:) :: r, s
-    integer, allocatable, dimension(:) :: nnb
-    integer, allocatable, dimension(:,:) :: nbh
+    ! Parameters
 
-    integer :: n, nring, height
-    double precision :: rad, sep
+    double precision, parameter :: pi = 3.14159265359
 
-    double precision, allocatable, dimension(:) :: energy_sample, mag_sample
-    double precision :: t_step, t_max, temperature
-    integer :: n_temperatures, sample_steps, relax_steps
+    ! Auxiliar counters and accumulators
 
     integer :: i, j, k, err
 
+    ! Data structures
+    double precision, allocatable, dimension(:,:) :: r, s
+    integer, allocatable, dimension(:) :: nnb
+    integer, allocatable, dimension(:,:) :: nbh
+    integer :: n
 
-    nring = 10; height = 51;
-    rad = 1.0; sep = 1.0
+    ! Nanotube properties
+    integer :: height = 12
+    integer :: nring = 10
 
-    ! Generating the nanotube sample
+    call nanotube_sample
+    call find_nbh(1.2d0)
 
-    call nanotube_sample(r, n, height, nring, rad, sep)
-    call find_nbh(r, 3.0d0, nnb, nbh)
+    call clear
 
-    print*, "#", n, maxval(nnb, dim=1)
+contains
 
-    ! Generating random spin initial configuration
+    subroutine nanotube_sample
+        double precision, parameter :: arc_length = 1.73205080756888
+        double precision :: x, y, z, theta, phi, radius
 
-    call random_spin(s, n)
+        n = nring * height
+        theta = 2.0d0 * pi / nring
+        phi = theta / 2.0d0
+        radius = arc_length / theta
+        z = 0.0d0
 
-    t_max = 1.5
-    t_step = 0.005
-    n_temperatures = t_max / t_step
+        allocate(r(3, n), stat=err)
+        if (err /= 0) print *, "r: Allocation request denied"
 
-    print*, "#", n_temperatures
+        do i = 1, height
 
-    relax_steps = 2000
-    sample_steps = 1
+            phi = 0.0d0
+            if ( mod(i / 2, 2) /= 0 ) phi = theta / 2.0d0
+            
+            do j = 0, nring - 1
+                x = radius * cos(j * theta + phi)
+                y = radius * sin(j * theta + phi)
+                r(:, (i - 1) * nring + j + 1) = (/ x, y, z /)
+            end do
 
-    allocate(energy_sample(sample_steps), stat=err)
-    if (err /= 0) print *, "# energy_sample: Allocation request denied"
+            if ( mod(i / 2, 2) == mod((i + 1) / 2, 2) ) then
+                z = z + 1.0d0
+            else
+                z = z + 0.5d0
+            end if
 
-    allocate(mag_sample(sample_steps), stat=err)
-    if (err /= 0) print *, "# mag_sample: Allocation request denied"
-
-    do i = 1, n_temperatures
-        temperature = t_max - (i - 1) * t_step
-
-        do j = 1, relax_steps
-            call mc_steep(r, s, nnb, nbh, 1.0d0, 5.0d0, (/ 0.0d0, 0.0d0, 1.0d0 /), temperature)
         end do
 
-        do j = 1, sample_steps
-            call mc_steep(r, s, nnb, nbh, 1.0d0, 5.0d0, (/ 0.0d0, 0.0d0, 1.0d0 /), temperature)
-            energy_sample(j) = total_energy(r, s, nnb, nbh, 2.0d0, 1.0d0, (/ 0.0d0, 0.0d0, 1.0d0 /))
-            mag_sample(j) = sqrt(sum((sum(s, dim=1) / n) ** 2))
+
+    end subroutine nanotube_sample
+
+
+    subroutine find_nbh(radius)
+        double precision, intent(in) :: radius
+
+        allocate(nnb(n), stat=err)
+        if (err /= 0) print *, "nnb: Allocation request denied"
+
+        if ( .not. allocated(r) ) then
+            print *, "You need to generate the nanotube first"
+            stop "Somehow semantic error."
+        end if
+
+        nnb = 0
+
+        do i = 1, n, 1
+            do j = 1, n, 1
+                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 )) < radius .and. i /= j ) then
+                    nnb(i) = nnb(i) + 1
+                end if
+            end do
         end do
 
-        print*, temperature, mean(energy_sample, sample_steps), mean(mag_sample, sample_steps), &
-                variance(energy_sample, sample_steps)
-    
-    end do
+        allocate(nbh(maxval(nnb), n), stat=err)
+        if (err /= 0) print *, "nbh: Allocation request denied"
 
-    if (allocated(energy_sample)) deallocate(energy_sample, stat=err)
-    if (err /= 0) print *, "# energy_sample: Deallocation request denied"
+        nnb = 0
 
-    if (allocated(mag_sample)) deallocate(mag_sample, stat=err)
-    if (err /= 0) print *, "# mag_sample: Deallocation request denied"
+        do i = 1, n, 1
+            do j = 1, n, 1
+                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 )) < radius .and. i /= j ) then
+                    nnb(i) = nnb(i) + 1
+                    nbh(nnb(i), i) = j
+                end if
+            end do
+        end do
+
+    end subroutine find_nbh
+
+
+    subroutine clear
+
+        if (allocated(r)) deallocate(r, stat=err)
+        if (err /= 0) print *, "r: Deallocation request denied"
+
+        if (allocated(nnb)) deallocate(nnb, stat=err)
+        if (err /= 0) print *, "nnb: Deallocation request denied"
+        
+        if (allocated(nbh)) deallocate(nbh, stat=err)
+        if (err /= 0) print *, "nbh: Deallocation request denied"
+
+    end subroutine clear
 
 end program nanotubo
