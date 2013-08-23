@@ -122,7 +122,7 @@ module utils
             energy = energy - 0.5 * j_ex * dot_product(s(i,:), s(nbh(i,j),:))
         end do
 
-        energy = energy - k_an * dot_product(s(i,:),e_an)
+        energy = energy - k_an * dot_product(s(i,:),e_an) ** 2
 
     end function energy
 
@@ -147,7 +147,7 @@ module utils
             rel_energy = rel_energy - j_ex * dot_product(s(i,:), s(nbh(i,j),:))
         end do
 
-        rel_energy = rel_energy - k_an * dot_product(s(i,:),e_an)
+        rel_energy = rel_energy - k_an * dot_product(s(i,:),e_an) ** 2
 
     end function rel_energy
 
@@ -217,5 +217,23 @@ module utils
 
     end subroutine mc_steep
 
+    function mean(array, n)
+        integer :: n
+        double precision, dimension(n), intent(in) :: array
+        double precision :: mean
+
+        mean = sum(array) / n
+
+    end function mean
+
+
+    function variance(array, n)
+        integer :: n
+        double precision, dimension(n), intent(in) :: array
+        double precision :: variance
+
+        variance = (mean(array ** 2, n)) - (mean(array, n) ** 2)
+
+    end function variance
 
 end module utils
