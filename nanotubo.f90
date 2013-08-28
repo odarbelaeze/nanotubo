@@ -17,11 +17,30 @@ program nanotubo
     integer :: n
 
     ! Nanotube properties
-    integer :: height = 12
-    integer :: nring = 10
+    integer :: height = 50
+    integer :: nring = 12
+
+    ! Physical parameters
+    double precision, dimension(3) :: e_h, e_k
+    double precision :: n_h, n_k, j_ex
+
+
+    ! Setting physical parameters
+    e_h = (/ 0.0d0, 0.0d0, 1.0d0 /); n_h = 0.0
+    e_k = (/ 0.0d0, 0.0d0, 1.0d0 /); n_k = 0.0
+    j_ex = 2.0d0
+
+
+    ! Program
 
     call nanotube_sample
     call find_nbh(1.2d0)
+
+    call random_spin
+
+    do i = 1, n, 1
+        print*, s(:,i)
+    end do
 
     call clear
 
@@ -78,7 +97,7 @@ contains
 
         do i = 1, n, 1
             do j = 1, n, 1
-                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 )) < radius .and. i /= j ) then
+                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 ) ) < radius .and. i /= j ) then
                     nnb(i) = nnb(i) + 1
                 end if
             end do
@@ -91,7 +110,7 @@ contains
 
         do i = 1, n, 1
             do j = 1, n, 1
-                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 )) < radius .and. i /= j ) then
+                if ( sqrt(sum( (r(:, i) - r(:, j)) ** 2 ) ) < radius .and. i /= j ) then
                     nnb(i) = nnb(i) + 1
                     nbh(nnb(i), i) = j
                 end if
@@ -100,6 +119,41 @@ contains
 
     end subroutine find_nbh
 
+    subroutine random_spin
+
+        allocate(s(3,n), stat=err)
+        if (err /= 0) print *, "s: Allocation request denied"
+
+        call random_number(s)
+        s = s - 0.5
+        do i = 1, n, 1
+            s(:,i) = s(:,i) / sqrt(sum(s(:,i) ** 2))
+        end do
+
+    end subroutine random_spin
+
+    function disturbed_spin(radius)
+        real, intent(in) :: radius
+        double precision, dimension(3, n) :: disturbed_spin
+        
+        call random_number(disturbed_spin)
+        disturbed_spin = disturbed_spin - 0.5
+        disturbed_spin = s + 2.0 * radius * disturbed_spin
+        do i = 1, n, 1
+            disturbed_spin(:,i) = disturbed_spin(:,i) / sqrt(sum(disturbed_spin(:,i) ** 2))
+        end do
+
+    end function disturbed_spin
+
+    function energy(i)
+        integer, intent(in) :: i
+        double precision :: energy
+
+        energy = n_h  * dot_product(s(:,i), e_h) + &
+                 n_k  * dot_product(s(:,i), e_k) ** 2 + &
+                 j_ex * dot_product(s(:,i), sum(s(:, nbh(1:nnb(i), i)), dim=2))
+
+    end function energy
 
     subroutine clear
 
@@ -111,6 +165,9 @@ contains
         
         if (allocated(nbh)) deallocate(nbh, stat=err)
         if (err /= 0) print *, "nbh: Deallocation request denied"
+
+        if (allocated(s)) deallocate(s, stat=err)
+        if (err /= 0) print *, "s: Deallocation request denied"
 
     end subroutine clear
 
