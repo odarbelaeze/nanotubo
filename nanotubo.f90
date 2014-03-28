@@ -5,10 +5,17 @@ program nanotubo
     ! Parameters
 
     double precision, parameter :: pi = 3.14159265359
+    double precision, parameter :: k_B = 0.0861730      ! meV / K
 
     ! Auxiliar counters and accumulators
 
-    integer :: i, j, k, err
+    integer :: i, j, k, err, mcs
+
+    ! Average auxiliars and stuff
+
+    double precision :: t_min, t_max, delta_t, temperature
+    double precision, allocatable, dimension(:,:) :: vec_mag
+    double precision, allocatable, dimension(:) :: vec_energy
 
     ! Data structures
     double precision, allocatable, dimension(:,:) :: r, s
@@ -28,7 +35,7 @@ program nanotubo
     ! Setting physical parameters
     e_h = (/ 0.0d0, 0.0d0, 1.0d0 /); n_h = 0.0
     e_k = (/ 0.0d0, 0.0d0, 1.0d0 /); n_k = 0.0
-    j_ex = 2.0d0
+    j_ex = 15.0d0                                       ! meV (hopefully)
 
 
     ! Program
@@ -38,9 +45,32 @@ program nanotubo
 
     call random_spin
 
-    do i = 1, n, 1
-        print*, s(:,i)
+    t_max = 400.0d0; t_min = 60.0d0; delta_t = 5.0d0
+    i = (t_max - t_min) / delta_t
+
+    allocate(vec_mag(3,i), stat=err)
+    if (err /= 0) print *, "vec_mag: Allocation request denied"
+
+    allocate(vec_energy(3,i), stat=err)
+    if (err /= 0) print *, "vec_energy: Allocation request denied"
+
+
+    do j = 0, i - 1, 1
+        temperature = t_max - j * delta_t
+        do mcs = 1, 10000, 1
+            call mc_steep(temperature)
+            vec_energy()
+        end do
+        print*, temperature, tot_energy(), magnetization()
     end do
+
+
+    if (allocated(vec_energy)) deallocate(vec_energy, stat=err)
+    if (err /= 0) print *, "vec_energy: Deallocation request denied"
+
+    if (allocated(vec_mag)) deallocate(vec_mag, stat=err)
+    if (err /= 0) print *, "vec_mag: Deallocation request denied"
+
 
     call clear
 
@@ -63,7 +93,7 @@ contains
 
             phi = 0.0d0
             if ( mod(i / 2, 2) /= 0 ) phi = theta / 2.0d0
-            
+
             do j = 0, nring - 1
                 x = radius * cos(j * theta + phi)
                 y = radius * sin(j * theta + phi)
@@ -119,6 +149,7 @@ contains
 
     end subroutine find_nbh
 
+
     subroutine random_spin
 
         allocate(s(3,n), stat=err)
@@ -132,10 +163,12 @@ contains
 
     end subroutine random_spin
 
+
     function disturbed_spin(radius)
+
         real, intent(in) :: radius
         double precision, dimension(3, n) :: disturbed_spin
-        
+
         call random_number(disturbed_spin)
         disturbed_spin = disturbed_spin - 0.5
         disturbed_spin = s + 2.0 * radius * disturbed_spin
@@ -145,15 +178,80 @@ contains
 
     end function disturbed_spin
 
+
     function energy(i)
+
         integer, intent(in) :: i
         double precision :: energy
 
         energy = n_h  * dot_product(s(:,i), e_h) + &
                  n_k  * dot_product(s(:,i), e_k) ** 2 + &
-                 j_ex * dot_product(s(:,i), sum(s(:, nbh(1:nnb(i), i)), dim=2))
+                 0.5 * j_ex * dot_product(s(:,i), sum(s(:, nbh(1:nnb(i), i)), dim=2))
 
     end function energy
+
+
+    function rel_energy(i)
+
+        integer, intent(in) :: i
+        double precision :: rel_energy
+
+        rel_energy = n_h  * dot_product(s(:,i), e_h) + &
+                     n_k  * dot_product(s(:,i), e_k) ** 2 + &
+                     j_ex * dot_product(s(:,i), sum(s(:, nbh(1:nnb(i), i)), dim=2))
+
+    end function rel_energy
+
+
+    function tot_energy()
+
+        double precision :: tot_energy
+        integer te_i
+
+        tot_energy = 0.0d0
+        do te_i = 1, n, 1
+            tot_energy = tot_energy + energy(te_i)
+        end do
+
+    end function tot_energy
+
+
+    function magnetization()
+
+        double precision :: magnetization
+        magnetization = sqrt(sum(sum(s, dim=2) ** 2)) / n
+
+    end function magnetization
+
+
+    subroutine mc_steep(temperature)
+
+        double precision, intent(in) :: temperature
+        double precision, dimension(3, n) :: st
+        double precision, dimension(3) :: old_spin
+        double precision :: old_energy, energy_delta
+        double precision :: prob
+
+        integer :: mc_i
+
+        st = disturbed_spin(0.5)
+
+        do mc_i = 1, n, 1
+            old_energy = rel_energy(mc_i)
+            old_spin = s(:, mc_i)
+            s(:, mc_i) = st(:, mc_i)
+            energy_delta = rel_energy(mc_i) - old_energy
+
+            if ( .not. (energy_delta < 0) ) then
+                call random_number(prob)
+                if ( prob < energy_delta / (k_B * temperature) ) then
+                    s(:, mc_i) = old_spin
+                end if
+            end if
+        end do
+
+    end subroutine mc_steep
+
 
     subroutine clear
 
@@ -162,7 +260,7 @@ contains
 
         if (allocated(nnb)) deallocate(nnb, stat=err)
         if (err /= 0) print *, "nnb: Deallocation request denied"
-        
+
         if (allocated(nbh)) deallocate(nbh, stat=err)
         if (err /= 0) print *, "nbh: Deallocation request denied"
 
